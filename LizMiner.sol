@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity >=0.5.0;
+pragma solidity ^0.8.0;
 
 import "./lib/math/SafeMath.sol";
 import "./lib/utils/ReentrancyGuard.sol";
@@ -42,14 +42,10 @@ contract LizMiner is ReentrancyGuard {
     address private _Lizaddr;
     address private _Liztrade;
     address private _bnbtradeaddress;
-    address private _wrappedbnbaddress;
-    address private _usdtaddress;
     address private _owner;
     address private _feeowner;
     LizMinePool private _minepool;
-    oldminer _oldcontract;
-    oldminer _ooldcontract;
-
+  
     mapping(uint256 => uint256[20]) internal _levelconfig; //credit level config
     uint256 _nowtotalhash;
     mapping(uint256 => uint256[3]) _checkpoints;
@@ -120,34 +116,22 @@ contract LizMiner is ReentrancyGuard {
     {
         return _mychilders[user];
     }
-
-    function into(uint256 amount) public payable {
-        _Lizaddr.safeTransferFrom(msg.sender, address(this), amount);
-    }
  
 
     function InitalContract(
         address lizToken,
         address liztrade,
-        address wrappedbnbaddress,
         address bnbtradeaddress,
-        address usdtaddress,
-        address feeowner,
-        address oldcontract,
-        address ooldcontract
+        address feeowner
     ) public {
         require(msg.sender == _owner);
         require(_feeowner == address(0));
         _Lizaddr = lizToken;
         _Liztrade = liztrade;
         _bnbtradeaddress = bnbtradeaddress;
-        _usdtaddress = usdtaddress;
-        _wrappedbnbaddress = wrappedbnbaddress;
         _feeowner = feeowner;
         _minepool = new LizMinePool(lizToken, _owner);
         _parents[msg.sender] = address(_minepool);
-        _oldcontract = oldminer(oldcontract);
-        _ooldcontract = oldminer(ooldcontract);
         _pctRate[70] = 120;
         _pctRate[50] = 150;
 
@@ -341,22 +325,7 @@ contract LizMiner is ReentrancyGuard {
     {
         return _checkpoints[_maxcheckpoint];
     }
-
-    function fixTradingPool(
-        address tokenAddress,
-        address tradecontract,
-        uint256 rate,
-        uint256 pctmin,
-        uint256 pctmax
-    ) public returns (bool) {
-        require(msg.sender == _owner);
-        _lpPools[tokenAddress].hashrate = rate;
-        _lpPools[tokenAddress].tradeContract = tradecontract;
-        _lpPools[tokenAddress].minpct = pctmin;
-        _lpPools[tokenAddress].maxpct = pctmax;
-        return true;
-    }
-
+ 
     function addTradingPool(
         address tokenAddress,
         address tradecontract,
@@ -551,135 +520,9 @@ contract LizMiner is ReentrancyGuard {
         return hashdiff;
     }
 
-    function RemoveInfo(address user, address tokenaddress) public {
-        require(
-            _oldpool[msg.sender][tokenaddress] > 0 || msg.sender == _owner,
-            "ERROR"
-        );
+    
 
-        require(
-            _lpPools[tokenaddress].poolwallet.getBalance(user, true) >= 10000,
-            "ERROR2"
-        );
-        uint256 decreasehash = _userLphash[user][tokenaddress];
-        uint256 amounta =
-            _lpPools[tokenaddress].poolwallet.getBalance(user, true);
-        uint256 amountb =
-            _lpPools[tokenaddress].poolwallet.getBalance(user, false);
-        _userLphash[user][tokenaddress] = 0;
-
-        address parent = user;
-        uint256 dthash = 0;
-        for (uint256 i = 0; i < 20; i++) {
-            parent = _parents[parent];
-            if (parent == address(0)) break;
-            _userlevelhashtotal[parent][i] = _userlevelhashtotal[parent][i].sub(
-                decreasehash
-            );
-            uint256 parentlevel = _userInfos[parent].userlevel;
-            uint256 pdechash =
-                decreasehash.mul(_levelconfig[parentlevel][i]).div(1000);
-            if (pdechash > 0) {
-                dthash = dthash.add(pdechash);
-                UserHashChanged(parent, 0, pdechash, false, block.number);
-            }
-        }
-        UserHashChanged(user, decreasehash, 0, false, block.number);
-        logCheckPoint(decreasehash.add(dthash), false, block.number);
-        _lpPools[tokenaddress].poolwallet.decBalance(user, amounta, amountb);
-        _oldpool[user][tokenaddress] = 0;
-    }
-
-    function DontDoingThis(address tokenaddress, uint256 pct2)
-        public
-        nonReentrant
-        returns (bool)
-    {
-        require(pct2 >= 10000);
-        RemoveInfo(msg.sender, tokenaddress);
-        return true;
-    }
-
-    function ChangeWithDrawPoint(
-        address user,
-        uint256 blocknum,
-        uint256 pendingreward
-    ) public {
-        require(msg.sender == _owner);
-        _userInfos[user].pendingreward = pendingreward;
-        _userInfos[user].lastblock = blocknum;
-        if (_maxcheckpoint > 0)
-            _userInfos[user].lastcheckpoint = _maxcheckpoint;
-    }
-
-    function setOldPool(
-        address tokenAddress,
-        address useraddress,
-        uint256 amount
-    ) public {
-        require(msg.sender == _owner);
-        _oldpool[useraddress][tokenAddress] = amount;
-    }
-
-    function MappingUserFromOld(address user, uint256 pending,address aparent) public {
-        require(msg.sender == _owner);
-        require(_userInfos[user].lastcheckpoint == 0);
-  
-        if (aparent != address(_oldcontract) && aparent != _owner)
-            require(_parents[aparent] != address(0));
-        if (_parents[user] == address(0)) {
-            _parents[user] = aparent;
-            _mychilders[aparent].push(user);
-        }
-        uint256 self = _oldcontract.getUserSelfHash(user);
-        uint256 team =_oldcontract.getUserTeamHash(user);
-        _userInfos[user] = UserInfo({
-            pendingreward: pending,
-            lastblock: block.number,
-            userlevel: _oldcontract.getUserLevel(user),
-            teamhash: team,
-            selfhash: self,
-            lastcheckpoint: 1
-        });
-
-        if (self > 0) {
-            for (uint256 m = 0; m < _lpaddresses.length; m++) {
-                address tokenAddress = _lpaddresses[m];
-                uint256[3] memory info =
-                    _oldcontract.getMyLpInfo(user, tokenAddress);
-                if (info[0] > 0) {
-
-                    uint256[3] memory oold =
-                    _ooldcontract.getMyLpInfo(user, tokenAddress);
-                    uint256 amounta = info[0];
-                    uint256 amountb = info[1];
-                    uint256 addhash = info[2];
-
-                     if(oold[0] > 0)
-                        setOldPool(tokenAddress, user, amounta);
-
-                    _lpPools[tokenAddress].poolwallet.addBalance(
-                        user,
-                        amounta,
-                        amountb
-                    );
-                    _userLphash[user][tokenAddress] = _userLphash[user][
-                        tokenAddress
-                    ].add(addhash);
-                }
-            }
-
-            address parent2 = user;
-                for (uint256 j = 0; j < 20; j++) {
-                    parent2 = _parents[parent2];
-                    if (parent2 == address(0)) break;
-                    _userlevelhashtotal[parent2][j] = _userlevelhashtotal[parent2][j].add(self);
-                }
-        }
-
-        _nowtotalhash=_nowtotalhash.add(team).add(self);
-    }
-
+    
     function buyVip(uint256 newlevel) public nonReentrant returns (bool) {
         require(newlevel < 8);
         require(_parents[msg.sender] != address(0), "must bind parent first");
@@ -714,7 +557,7 @@ contract LizMiner is ReentrancyGuard {
         _mychilders[parent].push(user);
     }
 
-    function getUserLasCheckPoint(address useraddress)
+    function getUserLastCheckPoint(address useraddress)
         public
         view
         returns (uint256)
@@ -832,11 +675,6 @@ contract LizMiner is ReentrancyGuard {
         returns (bool)
     {
         require(pct >= 10000 && pct <= 1000000);
-        require(
-            _lpPools[tokenAddress].poolwallet.getBalance(msg.sender, true) >=
-                10000,
-            "ERROR AMOUNT"
-        );
         require(_oldpool[msg.sender][tokenAddress] == 0, "back old");
         uint256 balancea =
             _lpPools[tokenAddress].poolwallet.getBalance(msg.sender, true);
@@ -939,6 +777,7 @@ contract LizMiner is ReentrancyGuard {
         if (tokenAddress == address(2)) {
             amount = msg.value;
         }
+		require(dppct <=100);
         require(amount > 10000);
         require(dppct >= _lpPools[tokenAddress].minpct, "Pct1");
         require(dppct <= _lpPools[tokenAddress].maxpct, "Pct2");
